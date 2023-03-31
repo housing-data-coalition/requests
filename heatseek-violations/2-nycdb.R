@@ -31,11 +31,14 @@ dbWriteTable(con, "heatseek_bbls", addresses_geocoded, temporary=TRUE)
 nycdb_query <- "
   select
     hs.bbl,
-    count(*)::numeric as tot_heat_viols
+    count(*)::numeric as tot_heat_viols,
+    count(*) filter (where class = 'C')::numeric as c_heat_viols,
+    -- these law sections are specifically for not providing heat
+    count(*) filter (where novdescription ~ '27-202[8-9]')::numeric as no_heat_viols
   from heatseek_bbls as hs
   left join hpd_violations as v using(bbl)
   where inspectiondate between '2022-10-01' and '2023-05-31' -- heat season
-    and novdescription ~ '27-20(2[8-9]|3[0-3])' -- heat violations
+    and novdescription ~ '27-20(2[8-9]|3[0-3])' -- heat-realted violations
   group by hs.bbl
 "
 
@@ -47,7 +50,11 @@ violations <- dbGetQuery(con, nycdb_query) |> as_tibble()
 # need to join back to the full list of addresses and fill in 0s
 heatseek_violations <- addresses_geocoded |> 
   left_join(violations, by = "bbl") |> 
-  mutate(tot_heat_viols = coalesce(tot_heat_viols, 0)) |> 
+  mutate(
+    tot_heat_viols = coalesce(tot_heat_viols, 0),
+    c_heat_viols = coalesce(c_heat_viols, 0),
+    no_heat_viols = coalesce(no_heat_viols, 0),
+  ) |> 
   # add some helpful links
   mutate(
     wow_link = str_glue("https://whoownswhat.justfix.org/bbl/{bbl}"),
